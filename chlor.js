@@ -32,15 +32,15 @@ var inverse_geo_projections = {
 var projector = function(bounds, width, height, proj_name){
 
     var f = geo_projections[proj_name] || geo_projections.mercator;
-    var proj_bounds = new Box(f(bounds.get('sw').get('lambda'), bounds.get('sw').get('phi') ),
-                                f(bounds.get('ne').get('lambda'), bounds.get('ne').get('phi')));
+    var proj_bounds = new Box(f(bounds.sw.lambda, bounds.sw.phi ),
+                                f(bounds.ne.lambda, bounds.ne.phi));
     var span = proj_bounds.toSpan();
     return function(point){
-        var p = f(point.get('lambda'), point.get('phi'));
+        var p = f(point.lambda, point.phi);
 //        x, y coordinates are the magnitude of an arc from a bounding line to the given coordinate in the given dimension
 //          times the ratio total map magnitude / total map span
-        var x = Math.round(width * (p.get('lambda') - proj_bounds.get('sw').get('lambda')) / span.get('lambda'));
-        var y = Math.round(height * (1 - ((p.get('phi') - proj_bounds.get('sw').get('phi')) / span.get('phi'))));
+        var x = Math.round(width * (p.lambda - proj_bounds.sw.lambda) / span.lambda);
+        var y = Math.round(height * (1 - ((p.phi - proj_bounds.sw.phi) / span.phi)));
         return [x, y]
     }
 
@@ -72,40 +72,18 @@ var inverse_projector = function(center, width, height, zoom, projection){
         // x, y as drawn on canvas
         var x = pairs[0];
         var y = height - pairs[1];
-        var phi = center.get('phi') + px_2_rad(y-(height/2), zoom);
-        var lambda = center.get('lambda') + px_2_rad(x-(width/2), zoom)%(2*Math.PI);
+        var phi = center.phi + px_2_rad(y-(height/2), zoom);
+        var lambda = center.lambda + px_2_rad(x-(width/2), zoom)%(2*Math.PI);
         var projected = f(lambda, phi);
         return new Point(projected[1] / (Math.PI/180), projected[0] / (Math.PI/180));
     };
 };
 
 
-var Class = function(){
-    this.attributes = {};
-};
+var Class = function(){};
 
 extend(Class.prototype, {
 
-    get: function(attr){
-        if (this.attributes.hasOwnProperty(attr)){
-            return this.attributes[attr];
-        } else {
-            return null
-        }
-    },
-    set : function(attrs, val){
-        if (typeof  attrs == 'string' && typeof val !== 'undefined'){
-            this.attributes[attrs] = val;
-            this.fire('set:'+ attrs);
-        } else {
-            for (var prop in attrs){
-                if (attrs.hasOwnProperty(prop)){
-                    this.attributes[prop] = attrs[prop];
-                    this.fire('set:' + prop);
-                }
-            }
-        }
-    },
     when : function(name, callback, context){
         this._events || (this._events = {});
         // retrieve array of all callbacks/contexts to fire on the named event
@@ -131,9 +109,9 @@ extend(Class.prototype, {
     },
     toString : function(){
         var s = '';
-        for (var prop in this.attributes){
-            if (this.attributes.hasOwnProperty(prop)){
-            var att = this.attributes[prop];
+        for (var prop in this){
+            if (this.hasOwnProperty(prop)){
+            var att = this[prop];
                 s += prop + ' : ' + att.toString() + '\n';
             }
         }
@@ -141,10 +119,20 @@ extend(Class.prototype, {
     }
 });
 
+var Feature = function() {};
+extend(Feature.prototype, {
+    defaults  : function(options){
+        var attributes = {
+            color : '#ff0000',
+            strikeWidth : 3
+        };
+        extend(attributes, options)
+        return attributes
+    }
 
-var Feature = Chlor.feature = function() {
 
-};
+});
+
 
 var Path = Chlor.path = function(geopath){
     this.coordinates = geopath;
@@ -152,14 +140,15 @@ var Path = Chlor.path = function(geopath){
 
 var Collection = Chlor.collection = function(){
     this.features = [];
-
 };
+
 
 var Polyline = Chlor.polyline = function(path, options){
-    var attributes = this.attributes = options || {};
-    var path = this.path = path;
-
+    this.attributes = this.defaults(options);
+    this.path = path;
 };
+
+extend(Polyline.prototype, Feature.prototype);
 
 extend(Path, {
     intersect : function(other){
@@ -170,9 +159,9 @@ extend(Path, {
 
 
 var Map = Chlor.map = function(selector, point, options) {
-    var attributes = this.attributes = options || {};
+    var attributes = options || {};
     var el = document.getElementById(selector);
-    var zoom = attributes.zoom || 13;
+    var zoom = this.zoom || 13;
     var bg_canvas = document.createElement('canvas');
     var f_canvas = document.createElement('canvas');
     bg_canvas.width = f_canvas.width = el.clientWidth;
@@ -181,7 +170,7 @@ var Map = Chlor.map = function(selector, point, options) {
     f_canvas.style.cssText = "z-index: 1;position:absolute";
     el.appendChild(bg_canvas);
     el.appendChild(f_canvas);
-    extend(attributes, {
+    extend(this, {
         el : el,
         bg_context : bg_canvas.getContext('2d'),
         f_context : f_canvas.getContext('2d'),
@@ -196,11 +185,11 @@ var Map = Chlor.map = function(selector, point, options) {
         tiles : {},
         features : []
     });
-    this.get('tiles')[zoom] = [[],[]];
+    this.tiles[zoom] = [[],[]];
     var dragging  = false;
     var o_x  = 0;
     var o_y =  0;
-    this.set('listeners', {
+    extend(this, {
         mousedown : el.addEventListener('mousedown', (function(event){
             o_x = event.clientX;
             o_y = event.clientY;
@@ -221,8 +210,7 @@ var Map = Chlor.map = function(selector, point, options) {
         keydown : document.addEventListener('keydown', this._keyListener.bind(this)),
         dblclick : el.addEventListener('dblclick', (function(event){
             var coords = [event.clientX, event.clientY];
-            var point = this.inverse_projector(coords);
-            this.set("center", point);
+            this.center =  this.inverse_projector(coords);
             this._zoomMap(1)
         }).bind(this))
     });
@@ -245,22 +233,20 @@ extend(Map.prototype, {
     },
 
     _redraw : function(){
-        if (this.get("features").length > 0) this.get('f_context').clearRect(0,0, 800, 500);
-        this.get("features").forEach(function(feature){
+        if (this.features.length > 0) this.f_context.clearRect(0,0, 800, 500);
+        this.features.forEach(function(feature){
             this.draw(feature)
         }, this);
     },
 
     draw : function(feature){
-        var ctx = this.get("f_context");
-        if (this.get('features').indexOf(feature) === -1) {
-            console.log('push')
-            this.get('features').push(feature);
+        var ctx = this.f_context;
+        if (this.features.indexOf(feature) === -1) {
+            this.features.push(feature);
         }
         ctx.beginPath();
-        ctx.strokeStyle = '#ff0000';
-        ctx.lineWidth = 3;
-
+        ctx.strokeStyle = feature.attributes.color;
+        ctx.lineWidth = feature.attributes.strikeWidth;
         var p = this.projector;
         feature.path.coordinates.forEach(function(point, i){
             var vals = p(point);
@@ -271,10 +257,10 @@ extend(Map.prototype, {
     },
 
     _zoomMap : function(inc){
-        this.set('zoom', this.get("zoom") + inc);
+        this.zoom += inc;
         this._initProjectors();
-        if (! (this.get('zoom') in this.get("tiles"))) {
-            this.get('tiles')[this.get('zoom')] = [[],[]];
+        if (! (this.zoom in this.tiles)) {
+            this.tiles[this.zoom] = [[],[]];
             this._initTiles();
 
         }else  this._updateTiles();
@@ -282,22 +268,22 @@ extend(Map.prototype, {
     },
 
     _scrollMap : function(dx, dy){
-        var w = this.get("width"), h = this.get('height');
+        var w = this.width, h = this.height;
         var sw = this.inverse_projector([dx, h + dy]);
         var ne = this.inverse_projector([w + dx, dy]);
-        var bounds = new Box(sw, ne);
-        this.set('bounds', bounds);
-        this.set('center', bounds.get('center'));
-        this.projector = projector(bounds, w, h, this.get("projection"));
-        this.inverse_projector = inverse_projector(this.get('center'), w, h, this.get('zoom'), this.get('projection'));
+        var bounds = this.bounds = new Box(sw, ne);
+        var center = this.center = bounds.center;
+        this.projector = projector(bounds, w, h, this.projection);
+        this.inverse_projector = inverse_projector(center, w, h, this.zoom, this.projection);
         this._updateTiles();
         this._redraw()
     },
 
     _updateTiles : function() {
-        var tiles = this.get('tiles')[this.get('zoom')];
-        var span = this.get('bounds').toSpan();
-        var m_lines = this.get('bounds').get("lines");
+        var tiles = this.tiles[this.zoom];
+//        console.log(tiles)
+        var span = this.bounds.toSpan();
+        var m_lines = this.bounds.lines;
         var new_top_row = [];
         var new_bottom_row = [];
         for (var i = 0; i < tiles.length; i++){
@@ -305,55 +291,55 @@ extend(Map.prototype, {
             var new_bounds, nw, se, t;
             for (var j = 0; j < row.length; j++){
                 var tile = row[j],
-                    t_lines = tile.get('bounds').get('lines');
+                    t_lines = tile.bounds.lines;
 //                    if none of the tiles are in the map zone, set tile active to false
                 if (t_lines[0] > m_lines[2] ||
                     t_lines[1] > m_lines[3] ||
                     t_lines[2] < m_lines[0] ||
-                    t_lines[3] < m_lines[1]) tile.set('active', false);
+                    t_lines[3] < m_lines[1]) tile.active = false;
                     //otherwise, redraw the tile
                 else {
-                    tile.set('active', true);
+                    tile.active = true;
                     this._drawTile(tile)
                 }
 
-                if (j == 0 && t_lines[0] > m_lines[0] && tile.get('active')){
-                    se = tile.get('bounds').get('sw');
+                if (j == 0 && t_lines[0] > m_lines[0] && tile.active){
+                    se = tile.bounds.sw;
                     new_bounds = new Box(
-                        new Point(se.get('lat'), se.get('lng') - span.get('lng')/3),
-                        new Point(se.get('lat') + span.get('lat')/2, se.get('lng'))
+                        new Point(se.lat, se.lng - span.lng/3),
+                        new Point(se.lat + span.lat/2, se.lng)
                     );
-                    t = this._newTile(new_bounds,this.get("tilewidth"), this.get('tileheight'));
+                    t = this._newTile(new_bounds,this.tilewidth, this.tileheight);
                     row.unshift(t);
                     j += 1;
                 }
-                else if (j == row.length-1 && t_lines[2] < m_lines[2] && tile.get('active')){
-                    nw = tile.get('bounds').get('ne');
+                else if (j == row.length-1 && t_lines[2] < m_lines[2] && tile.active){
+                    nw = tile.bounds.ne;
                     new_bounds = new Box(
-                            new Point(nw.get('lat') - span.get('lat')/2, nw.get('lng')),
-                            new Point(nw.get('lat'), nw.get('lng') + span.get('lng')/3)
+                            new Point(nw.lat - span.lat / 2, nw.lng),
+                            new Point(nw.lat, nw.lng + span.lng /3)
                     );
-                    t = this._newTile(new_bounds, this.get('tilewidth'), this.get('tileheight'));
+                    t = this._newTile(new_bounds, this.tilewidth, this.tileheight);
                     row.push(t);
                 }
 
-                if (i == 0 && t_lines[3] < m_lines[3] && tile.get("active")){
-                    se = tile.get('bounds').get('ne');
+                if (i == 0 && t_lines[3] < m_lines[3] && tile.active){
+                    se = tile.bounds.ne;
                     new_bounds = new Box(
-                        new Point(se.get('lat'), se.get('lng')-span.get('lng')/3),
-                        new Point(se.get('lat') + span.get('lat')/2, se.get('lng'))
+                        new Point(se.lat, se.lng - span.lng /3),
+                        new Point(se.lat + span.lat / 2, se.lng )
                     );
-                    t = this._newTile(new_bounds, this.get('tilewidth'), this.get("tileheight"));
+                    t = this._newTile(new_bounds, this.tilewidth, this.tileheight);
                     new_top_row.push(t);
                 }
 
-                else if (i == tiles.length-1 && t_lines[1] > m_lines[1] && tile.get('active')){
-                    nw = tile.get('bounds').get('sw');
+                else if (i == tiles.length - 1 && t_lines[1] > m_lines[1] && tile.active){
+                    nw = tile.bounds.sw;
                     new_bounds = new Box(
-                        new Point(nw.get('lat')-span.get('lat')/2, nw.get('lng')),
-                        new Point(nw.get('lat'), nw.get("lng") + span.get('lng')/3)
+                        new Point(nw.lat - span.lat / 2, nw.lng),
+                        new Point(nw.lat, nw.lng + span.lng / 3)
                     );
-                    t = this._newTile(new_bounds, this.get('tilewidth'), this.get('tileheight'));
+                    t = this._newTile(new_bounds, this.tilewidth, this.tileheight);
                     new_bottom_row.push(t);
                 }
             }
@@ -363,38 +349,38 @@ extend(Map.prototype, {
     },
 
     _initProjectors : function(){
-        var ip = this.inverse_projector = inverse_projector(this.get('center'),this.get('width'), this.get('height'),
-                                                            this.get('zoom'), this.get('projection'));
-        var bounds = new Box(ip([0, this.get('height')]), ip([this.get('width'), 0]));
-        this.set('bounds', bounds);
-        this.projector = projector(bounds,this.get('width'), this.get('height'), this.get('projection'));
+        var ip = this.inverse_projector = inverse_projector(this.center, this.width, this.height,
+                                                            this.zoom, this.projection);
+        var bounds = new Box(ip([0, this.height]), ip([this.width, 0]));
+        this.bounds = bounds;
+        this.projector = projector(bounds, this.width, this.height, this.projection);
 
     },
 
     _initTiles : function() {
-        var bounds = this.get('bounds');
+        var bounds = this.bounds;
         var span = bounds.toSpan();
-        var tile_width_span = span.get('lng')/3;
-        var tile_height_span = span.get('lat')/2;
+        var tile_width_span = span.lng / 3;
+        var tile_height_span = span.lat / 2;
 
-        var mc = this.get('center');
-        var tw = this.get('tilewidth');
-        var th = this.get('tileheight');
+        var mc = this.center;
+        var tw = this.tilewidth;
+        var th = this.tileheight;
         for (var i = 0; i<6; i++){
             var col = i%3;
             var row = Math.floor(i/3);
             var tb = new Box(new Point(
-                                    mc.get('lat') - (row*tile_height_span),
-                                    bounds.get('sw').get('lng') + (col*tile_width_span)),
+                                    mc.lat - (row*tile_height_span),
+                                    bounds.sw.lng + (col*tile_width_span)),
                             new Point(
-                                    mc.get('lat') + (!row*tile_height_span),
-                                    bounds.get("sw").get('lng') + ((col+1)*tile_width_span)));
-            this.get('tiles')[this.get('zoom')][row][col] = this._newTile(tb, tw, th);
+                                    mc.lat + (!row*tile_height_span),
+                                    bounds.sw.lng + ((col+1)*tile_width_span)));
+            this.tiles[this.zoom][row][col] = this._newTile(tb, tw, th);
         }
     },
 
     _newTile : function(tb, tw, th){
-            var tile = new Tile(tb, tw, th, this.get('style'));
+            var tile = new Tile(tb, tw, th, this.style);
             tile._getImage();
             this._drawTile(tile);
             return tile
@@ -402,10 +388,11 @@ extend(Map.prototype, {
 
     _drawTile : function(tile){
 //    only called if some portion of tile is on the map
-        var tw = tile.get('width'), th = tile.get('height');
-        var nw_tile_proj = this.projector(new Point(tile.get('bounds').get('ne').get('lat'),
-                                                        tile.get('bounds').get('sw').get('lng')));
-         var x = nw_tile_proj[0],
+        var tw = tile.width, th = tile.height;
+        var nw_tile_proj = this.projector(new Point(tile.bounds.ne.lat,
+                                                        tile.bounds.sw.lng));
+//        if (tile._id === 101) console.log(nw_tile_proj)
+        var x = nw_tile_proj[0],
             y = nw_tile_proj[1];
         var p = {
 //            if the new origin of the tile is off the map, set it to zero
@@ -416,34 +403,34 @@ extend(Map.prototype, {
             sy : y < 0 ? Math.abs(y) : 0,
 //            if the new origin is off the map, then the new width is tital width plus the amount off
 //          otherwise, it is either a) the total map width minus the amount off
-            sWidth : x <= 0 ? tw + x : Math.min((this.get('width') - x), tw),
-            sHeight : y <= 0 ? th + y: Math.min((this.get('height') - y), th)
+            sWidth : x <= 0 ? tw + x : Math.min((this.width - x), tw),
+            sHeight : y <= 0 ? th + y: Math.min((this.height - y), th)
         };
-        tile.set(p);
+        extend(tile, p);
+//        console.log(tile)
         var that = this;
         function draw(){
-            that.get('bg_context').drawImage(tile.get('image'), p.sx, p.sy, p.sWidth, p.sHeight, p.dx, p.dy, p.sWidth, p.sHeight)
+            that.bg_context.drawImage(tile.image, p.sx, p.sy, p.sWidth, p.sHeight, p.dx, p.dy, p.sWidth, p.sHeight)
         }
-        if (tile.get('ready')){
+        if (tile.ready){
             draw()
         } else {
             tile.when('imageready', draw);
-            this.get('bg_context').fillStyle = '#C0C0C0';
-            this.get("bg_context").fillRect(p.dx, p.dy, p.sWidth, p.sHeight);
+            this.bg_context.fillStyle = '#C0C0C0';
+            this.bg_context.fillRect(p.dx, p.dy, p.sWidth, p.sHeight);
         }
     }
 });
 
 var Tile = function(bounds, width, height, style){
-    this.attributes = {
+    extend(this, {
         width : width,
         height : height,
         bounds : bounds,
         style : style,
-        parameters : {},
         active : true,
         _id : curr_tile_id
-    };
+    });
     curr_tile_id += 1;
 };
 extend(Tile.prototype, Class.prototype);
@@ -453,32 +440,29 @@ extend(Tile.prototype, {
         var that = this;
         var sw = new Point(response.extent.ymin, response.extent.xmin);
         var ne = new Point(response.extent.ymax, response.extent.xmax);
-        this.set({
-            'width' : response.width,
-            'height': response.height,
-            'image' : new Image(),
-            'extent': new Box(sw, ne)
+        extend(this, {
+            width : response.width,
+            height: response.height,
+            image : new Image(),
+            bounds : new Box(sw, ne)
         });
-        this.set("bounds", this.get('extent'));
-
-        var img = this.get('image');
-
-        img.onload = function(){
-            that.set('ready', true);
+        this.image.onload = function(){
+            that.ready =  true;
             that.fire('imageready')
         };
 
-        img.src = response.href;
+        this.image.src = response.href;
     },
+
     _getImage: function(){
         var map_request = new XMLHttpRequest();
-
-        var url = urlTemplate(services(this.get('style'), this.get('zoom')), {
-            bounds : this.get('bounds').urlString(),
-            width : this.get('width'),
-            height : this.get('height')
-        });
         var that = this;
+//        console.log(this)
+        var url = urlTemplate(services(that.style, that.zoom), {
+            bounds : that.bounds.urlString(),
+            width : that.width,
+            height : that.height
+        });
         map_request.open("GET", url, true);
         map_request.onreadystatechange = function(){
             if (map_request.readyState == 4){
@@ -518,9 +502,10 @@ var services = function(name, zoom){
 };
 
 var Point = Chlor.point = function(lat, lng){
-    this.attributes = {};
+//    this.attributes = {};
+//    this.attributes = {};
     var rat = (Math.PI/180);
-    this.set({
+    extend(this, {
         lat : lat,
         lng : lng,
         phi : lat * rat,
@@ -534,24 +519,26 @@ extend(Point.prototype, {
 });
 
 var Box = Chlor.Box = function(sw, ne){
-    this.attributes = {};
-    this.set({
+//    this.attributes = {};
+
+    extend(this, {
         sw : sw,
         ne : ne,
-        seq : [sw, new Point(ne.get('lat'), sw.get('lng')), ne, new Point(sw.get('lat'), ne.get('lng')), sw],
-        center : new Point((sw.get('lat') + ne.get('lat'))/2, (sw.get('lng') + ne.get('lng'))/2),
-        lines : [sw.get('lng'), sw.get('lat'), ne.get('lng'), ne.get('lat')]
+        seq : [sw, new Point(ne.lat, sw.lng), ne, new Point(sw.lat, ne.lng), sw],
+        center : new Point((sw.lat + ne.lat) / 2, (sw.lng + ne.lng) / 2),
+        lines : [sw.lng, sw.lat, ne.lng, ne.lat]
     });
+
 };
 
 
 extend(Box.prototype, Class.prototype);
 extend(Box.prototype, {
     urlString: function(){
-        return this.get('lines').join(',')
+        return this.lines.join(',')
     },
     toSpan : function(){
-        return new Point(this.get('ne').get('lat') - this.get('sw').get('lat'),
-                        this.get('ne').get('lng') - this.get('sw').get('lng'))
+        return new Point(this.ne.lat - this.sw.lat,
+                        this.ne.lng - this.sw.lng)
     }
 });
