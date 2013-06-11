@@ -94,7 +94,7 @@ extend(Class.prototype, {
         }
     },
     set : function(attrs, val){
-        if (typeof  attrs == 'string' && val){
+        if (typeof  attrs == 'string' && typeof val !== 'undefined'){
             this.attributes[attrs] = val;
             this.fire('set:'+ attrs);
         } else {
@@ -177,7 +177,8 @@ var Map = Chlor.map = function(selector, point, options) {
     var f_canvas = document.createElement('canvas');
     bg_canvas.width = f_canvas.width = el.clientWidth;
     bg_canvas.height = f_canvas.height = el.clientHeight;
-    f_canvas.style = {'z-index': 1}
+    bg_canvas.style.cssText = "z-index:0; position:absolute;";
+    f_canvas.style.cssText = "z-index: 1;position:absolute";
     el.appendChild(bg_canvas);
     el.appendChild(f_canvas);
     extend(attributes, {
@@ -192,13 +193,38 @@ var Map = Chlor.map = function(selector, point, options) {
         projection : attributes.projection || 'naive',
         zoom : zoom,
         style : attributes.style || 'topo',
-        tiles : {}
+        tiles : {},
+        features : []
     });
     this.get('tiles')[zoom] = [[],[]];
+    var dragging  = false;
+    var o_x  = 0;
+    var o_y =  0;
     this.set('listeners', {
-        mousedown : el.addEventListener('mousedown', this._dragListener.bind(this)),
+        mousedown : el.addEventListener('mousedown', (function(event){
+            o_x = event.clientX;
+            o_y = event.clientY;
+            dragging = true;
+        }).bind(this)),
+        mousemove : el.addEventListener('mousemove', (function(event){
+            if (dragging){
+                var m_x = event.clientX;
+                var m_y = event.clientY;
+                this._scrollMap(o_x-m_x, o_y-m_y);
+                o_x = m_x;
+                o_y = m_y;
+            }
+        }).bind(this)),
+        mouseup : el.addEventListener('mouseup', (function(){
+            dragging = false;
+        }).bind(this)),
         keydown : document.addEventListener('keydown', this._keyListener.bind(this)),
-        dblclick : el.addEventListener('dblclick', this._zoomMap.bind(this, 1))
+        dblclick : el.addEventListener('dblclick', (function(event){
+            var coords = [event.clientX, event.clientY];
+            var point = this.inverse_projector(coords);
+            this.set("center", point);
+            this._zoomMap(1)
+        }).bind(this))
     });
 
     this._initProjectors();
@@ -208,87 +234,64 @@ var Map = Chlor.map = function(selector, point, options) {
 extend(Map.prototype, Class.prototype);
 extend(Map.prototype, {
     _keyListener : function(event){
-        console.log(event)
-        var that = this;
-        var interval;
-        this.get('el').addEventListener('keyup', function(){
-            clearInterval(interval)
-        });
         switch (event.keyCode){
-            case 189:
-                this._zoomMap(-1);
-                break;
-            case 187:
-                this._zoomMap(1);
-                break;
-            case 37:
-                this._scrollMap(-1,0);
-                break;
-            case 38:
-                this._scrollMap(0,-1);
-                break;
-            case 39:
-                this._scrollMap(1,0);
-                break;
-            case 40:
-                this._scrollMap(0,1);
-                break;
+            case 189: this._zoomMap(-1); break;
+            case 187: this._zoomMap(1); break;
+            case 37: this._scrollMap(-5,0); break;
+            case 38: this._scrollMap(0,-5); break;
+            case 39: this._scrollMap(5,0); break;
+            case 40: this._scrollMap(0,5); break;
         }
     },
 
-    draw : function(feature){
-        this.get('f_context').beginPath();
-        this.get("f_context").strokeStyle = '#ff0000';
-        this.get("f_context").lineWidth = 10;
-
-        var p = this.projector;
-        var that = this;
-        feature.path.coordinates.forEach(function(point, i){
-            var vals = p(point);
-            console.log(vals)
-            if (i == 0) that.get('f_context').moveTo(vals[0], vals[1]);
-            else that.get('f_context').lineTo(vals[0], vals[1])
-        });
-
-        this.get('f_context').stroke();
-
+    _redraw : function(){
+        if (this.get("features").length > 0) this.get('f_context').clearRect(0,0, 800, 500);
+        this.get("features").forEach(function(feature){
+            this.draw(feature)
+        }, this);
     },
 
-    _dragListener : function(down_event){
-        var that = this;
-        var o_x = down_event.clientX,
-            o_y = down_event.clientY;
-        var move = function(event){
-            var m_x = event.clientX,
-                m_y = event.clientY;
-            that._scrollMap(o_x-m_x, o_y-m_y);
-            o_x = m_x;
-            o_y = m_y;
-        };
-        this.get('el').addEventListener('mousemove', move);
-        this.get('el').addEventListener('mouseup', function(){
-            that.get('el').removeEventListener('mousemove', move)
-        })
+    draw : function(feature){
+        var ctx = this.get("f_context");
+        if (this.get('features').indexOf(feature) === -1) {
+            console.log('push')
+            this.get('features').push(feature);
+        }
+        ctx.beginPath();
+        ctx.strokeStyle = '#ff0000';
+        ctx.lineWidth = 3;
 
+        var p = this.projector;
+        feature.path.coordinates.forEach(function(point, i){
+            var vals = p(point);
+            if (i == 0) ctx.moveTo(vals[0], vals[1]);
+            else ctx.lineTo(vals[0], vals[1])
+        }, this);
+        ctx.stroke();
     },
 
     _zoomMap : function(inc){
         this.set('zoom', this.get("zoom") + inc);
-        if (! (this.get('zoom') in this.get("tiles"))) this.get('tiles')[this.get('zoom')] = [[],[]];
         this._initProjectors();
-        this._initTiles();
+        if (! (this.get('zoom') in this.get("tiles"))) {
+            this.get('tiles')[this.get('zoom')] = [[],[]];
+            this._initTiles();
+
+        }else  this._updateTiles();
+        this._redraw()
     },
+
     _scrollMap : function(dx, dy){
-        var sw = this.inverse_projector([dx, this.get('height')+dy]);
-        var ne = this.inverse_projector([this.get('width')+dx, dy]);
+        var w = this.get("width"), h = this.get('height');
+        var sw = this.inverse_projector([dx, h + dy]);
+        var ne = this.inverse_projector([w + dx, dy]);
         var bounds = new Box(sw, ne);
         this.set('bounds', bounds);
         this.set('center', bounds.get('center'));
-        this.projector = projector(bounds, this.get('width'), this.get('height'), this.get("projection"));
-        this.inverse_projector = inverse_projector(this.get('center'),this.get('width'), this.get("height"), this.get('zoom'), this.get('projection'));
-//        this._clearScroll(dx, dy);
+        this.projector = projector(bounds, w, h, this.get("projection"));
+        this.inverse_projector = inverse_projector(this.get('center'), w, h, this.get('zoom'), this.get('projection'));
         this._updateTiles();
-
+        this._redraw()
     },
 
     _updateTiles : function() {
@@ -417,7 +420,6 @@ extend(Map.prototype, {
             sHeight : y <= 0 ? th + y: Math.min((this.get('height') - y), th)
         };
         tile.set(p);
-//        console.log(p)
         var that = this;
         function draw(){
             that.get('bg_context').drawImage(tile.get('image'), p.sx, p.sy, p.sWidth, p.sHeight, p.dx, p.dy, p.sWidth, p.sHeight)
@@ -429,14 +431,7 @@ extend(Map.prototype, {
             this.get('bg_context').fillStyle = '#C0C0C0';
             this.get("bg_context").fillRect(p.dx, p.dy, p.sWidth, p.sHeight);
         }
-
     }
-
-//    getMapBounds : function(){
-//    //    the box represented by a map of width and height at zoom centered at Point
-//        var p = inverse_projector(this.get('center'), this.get('width'), this.get('height'), this.get('zoom'),this.get("projection"));
-//        return new Box(p([0, this.get('height')]), p([this.get('width'), 0]));
-//    }
 });
 
 var Tile = function(bounds, width, height, style){
@@ -560,6 +555,3 @@ extend(Box.prototype, {
                         this.get('ne').get('lng') - this.get('sw').get('lng'))
     }
 });
-
-
-
