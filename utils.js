@@ -32,30 +32,30 @@ var geoJson = function(obj){
             var coords = obj.geometry.coordinates;
             switch(obj.geometry.type){
                 case "LineString":
-                    var path = new Path(coords.map(function(point){
-                        return new Point(point[1], point[0])
+                    var path = new Chlor.path(coords.map(function(point){
+                        return new Chlor.point(point[1], point[0])
                     }));
-                    return new Polyline(path, obj.properties);
+                    return new Chlor.polyline(path, obj.properties);
                     break;
                 case "Point":
-                    return new Point(coords[1], coords[0]);
+                    return new Chlor.point(coords[1], coords[0]);
                     break;
                 case "MultiPoint":
                     var points = coords.map(function(point){
-                        return new Point(point[1], point[0])
+                        return new Chlor.point(point[1], point[0])
                     });
-                    return new Collection(points);
+                    return new Chlor.collection(points);
                     break;
                 case 'MultiLineString':
 //                    coords.
                     var polylines = coords.map(function(line){
                         var arr = line.map(function(point){
-                            return new Point(point[1], point[0])
+                            return new Chlor.point(point[1], point[0])
                         });
-                        var path = new Path(arr);
-                        return new Polyline(path, obj.properties)
+                        var path = new Chlor.path(arr);
+                        return new Chlor.polyline(path, obj.properties)
                     });
-                    return new Collection(polylines);
+                    return new Chlor.collection(polylines);
                     break;
 //                case "Polygon":
 //                    new Polygon

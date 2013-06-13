@@ -1,3 +1,4 @@
+var Chlor = (function (){
 var extend = function(base, newobj) {
     for (var prop in newobj){
         if (newobj.hasOwnProperty(prop)) {
@@ -126,8 +127,8 @@ extend(Feature.prototype, {
             color : '#ff0000',
             strikeWidth : 3
         };
-        extend(attributes, options)
-        return attributes
+        extend(attributes, options);
+        this.attributes = attributes;
     }
 
 
@@ -144,7 +145,7 @@ var Collection = Chlor.collection = function(){
 
 
 var Polyline = Chlor.polyline = function(path, options){
-    this.attributes = this.defaults(options);
+    this.defaults(options);
     this.path = path;
 };
 
@@ -159,9 +160,14 @@ extend(Path, {
 
 
 var Map = Chlor.map = function(selector, point, options) {
-    var attributes = options || {};
+
+    var attributes = {
+        zoom : 13,
+        projection : 'naive',
+        style : 'topo'
+    };
+    extend(attributes, options);
     var el = document.getElementById(selector);
-    var zoom = this.zoom || 13;
     var bg_canvas = document.createElement('canvas');
     var f_canvas = document.createElement('canvas');
     bg_canvas.width = f_canvas.width = el.clientWidth;
@@ -179,13 +185,13 @@ var Map = Chlor.map = function(selector, point, options) {
         height : el.clientHeight,
         tilewidth : Math.round(el.clientWidth / 3),
         tileheight : Math.round(el.clientHeight / 2),
-        projection : attributes.projection || 'naive',
-        zoom : zoom,
-        style : attributes.style || 'topo',
+        projection : attributes.projection,
+        zoom : attributes.zoom,
+        style : attributes.style,
         tiles : {},
         features : []
     });
-    this.tiles[zoom] = [[],[]];
+    this.tiles[attributes.zoom] = [[],[]];
     var dragging  = false;
     var o_x  = 0;
     var o_y =  0;
@@ -542,3 +548,5 @@ extend(Box.prototype, {
                         this.ne.lng - this.sw.lng)
     }
 });
+return Chlor
+}());
