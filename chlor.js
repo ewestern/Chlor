@@ -1,4 +1,4 @@
-var Chlor = (function (){
+;(function (exports){
 var extend = function(base, newobj) {
     for (var prop in newobj){
         if (newobj.hasOwnProperty(prop)) {
@@ -10,7 +10,7 @@ var extend = function(base, newobj) {
 
 var Chlor = {};
 var curr_tile_id = 100;
-
+var RADIUS = 6371000;
 var geo_projections = {
     mercator : function (lambda, phi) {
         var r = 180 / Math.PI;
@@ -120,7 +120,9 @@ extend(Class.prototype, {
     }
 });
 
-var Feature = function() {};
+var Feature = function() {
+    this.maps = [];
+};
 extend(Feature.prototype, {
     defaults  : function(options){
         var attributes = {
@@ -135,7 +137,20 @@ extend(Feature.prototype, {
 });
 
 
-var Path = Chlor.path = function(geopath){
+var Path = Chlor.path = function(geopath, bounds){
+    if (!bounds){
+        var xmin = 180,
+            ymin = 90,
+            xmax = -180,
+            ymax = -90;
+        geopath.forEach(function(point){
+            if (point.lat < ymin) ymin = point.lat;
+            else if (point.lat > ymax) ymax = point.lat;
+            if (point.lng < xmin) xmin = point.lng;
+            else if (point.lng > xmax) xmax = point.lng
+        });
+        this.bounds = new Box(new Point(ymin, xmin), new Point(ymax, xmax))
+    } else {this.bounds = bounds}
     this.coordinates = geopath;
 };
 
@@ -149,11 +164,29 @@ var Polyline = Chlor.polyline = function(path, options){
     this.path = path;
 };
 
+var Polygon = Chlor.polygon = function(paths, options){
+    this.paths = paths.length > 1? paths : [paths];
+    this.outer = this.paths[0]
+};
+
+extend(Polygon.prototype, {
+    contains : function(point){
+        return this.outer.contains(point)
+    }
+});
+
 extend(Polyline.prototype, Feature.prototype);
+
+
 
 extend(Path, {
     intersect : function(other){
-//        returns the point at which this intersectos with other
+    },
+    distance : function(){
+        this.coordinates.reduce(function(prev, current, i, arr){
+            return current._sphere_dis(arr[i-1]) + !i ? 0 : prev
+        })
+
     }
 
 });
@@ -250,6 +283,9 @@ extend(Map.prototype, {
         if (this.features.indexOf(feature) === -1) {
             this.features.push(feature);
         }
+        if (feature.maps.indexOf(this) === -1){
+            feature.maps.push()
+        }
         ctx.beginPath();
         ctx.strokeStyle = feature.attributes.color;
         ctx.lineWidth = feature.attributes.strikeWidth;
@@ -260,6 +296,12 @@ extend(Map.prototype, {
             else ctx.lineTo(vals[0], vals[1])
         }, this);
         ctx.stroke();
+    },
+
+    remove : function(feature){
+        feature.maps.splice(feature.maps.indexOf(this), 1);
+        this.features.splice(this.features.indexOf(feature), 1);
+        this._redraw()
     },
 
     _zoomMap : function(inc){
@@ -508,8 +550,6 @@ var services = function(name, zoom){
 };
 
 var Point = Chlor.point = function(lat, lng){
-//    this.attributes = {};
-//    this.attributes = {};
     var rat = (Math.PI/180);
     extend(this, {
         lat : lat,
@@ -521,7 +561,32 @@ var Point = Chlor.point = function(lat, lng){
 
 extend(Point.prototype, Class.prototype);
 extend(Point.prototype, {
+    equals : function(other, tol){
+        tol = tol || 0.001;
+        return this.lat - tol <= other.lat <= this.lat + tol &&
+                this.lng - tol <= other.lng <= this.lng
+    },
 
+    _sphere_dis : function(other){
+//       computes the distance in meters from another point
+//
+        var dx = (Math.cos(this.phi) * Math.cos(this.lambda)) - (Math.cos(other.phi) * Math.cos(other.lambda));
+        var dy = (Math.cos(this.phi) * Math.sin(this.lambda)) - (Math.cos(other.phi) * Math.sin(other.lambda));
+        var dz = Math.sin(this.phi) - Math.sin(other.phi);
+        var Ch = Math.sqrt((Math.pow(dx, 2) + Math.pow(dy, 2) + Math.pow(dz, 2)));
+        return RADIUS * 2 * Math.asin(Ch/2);
+
+//    EARTH_R = 6372.8
+//
+//    y = sqrt(
+//        (cos(lat2) * sin(dlon)) ** 2
+//        + (cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dlon)) ** 2
+//        )
+//    x = sin(lat1) * sin(lat2) + cos(lat1) * cos(lat2) * cos(dlon)
+//    c = atan2(y, x)
+//    return EARTH_R * c
+
+    }
 });
 
 var Box = Chlor.Box = function(sw, ne){
@@ -546,7 +611,14 @@ extend(Box.prototype, {
     toSpan : function(){
         return new Point(this.ne.lat - this.sw.lat,
                         this.ne.lng - this.sw.lng)
+    },
+    contains : function(point){
+        return  !!(this.ne.lat > point.lat > this.sw.lat &&
+            this.ne.lng > point.lng > this.ne.lng)
+
     }
+//}
+
 });
-return Chlor
-}());
+exports.Chlor =  Chlor
+}(this));
