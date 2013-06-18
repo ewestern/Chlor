@@ -1,4 +1,5 @@
-;(function (exports){
+;
+(function (exports){
 var extend = function(base, newobj) {
     for (var prop in newobj){
         if (newobj.hasOwnProperty(prop)) {
@@ -6,7 +7,6 @@ var extend = function(base, newobj) {
         }
     }
 };
-
 
 var Chlor = {};
 var curr_tile_id = 100;
@@ -61,9 +61,29 @@ var px_2_rad = function(px, zoom){
 };
 
 var px_2_zoom = function(px, rad){
-
     return logBase(2, (px*(2*Math.PI / 600)/rad)) + 1
 };
+
+//is_convex_polygon = function(path){
+//    var angles = [];
+//        for (var i =0; i < path.length; i++){
+//            if (i <= 1) continue;
+//            var c = Math.sqrt(Math.pow((path[i-2].lat - path[i-1].lat),2) + Math.pow((path[i-2].lng - path[i-1].lng), 2));
+//            console.log(c)
+//            var a = Math.sqrt(Math.pow((path[i-1].lat - path[i].lat),2) + Math.pow((path[i-1].lng - path[i].lng), 2));
+//            console.log(a)
+//            var b = Math.sqrt(Math.pow((path[i].lat - path[i-2].lat),2) + Math.pow((path[i].lng - path[i-2].lng), 2));
+//            console.log(b)
+//            var beta = Math.acos((Math.pow(a, 2) + Math.pow(c, 2) - Math.pow(b, 2)) / (2 * a * c));
+//            angles.push(beta * (180/Math.PI))
+//        }
+//    return angles
+//}
+
+//var _convex_contains = function(path1, path2){
+//
+//
+//}
 
 var inverse_projector = function(center, width, height, zoom, projection){
 //
@@ -120,9 +140,7 @@ extend(Class.prototype, {
     }
 });
 
-var Feature = function() {
-    this.maps = [];
-};
+var Feature = function() {};
 extend(Feature.prototype, {
     defaults  : function(options){
         var attributes = {
@@ -131,7 +149,8 @@ extend(Feature.prototype, {
         };
         extend(attributes, options);
         this.attributes = attributes;
-    }
+    },
+    maps : []
 
 
 });
@@ -154,6 +173,38 @@ var Path = Chlor.path = function(geopath, bounds){
     this.coordinates = geopath;
 };
 
+
+extend(Path.prototype, {
+    intersects: function(other){
+        var short = this.coordinates.length >= other.coordinates.length ? other.coordinates : this.coordinates;
+        var long = this.coordinates.length < other.coordinates.length ? other.coordinates : this.coordinates;
+        for (var i = 0; i < short.length; i++){
+            if (i !== 0){
+                var slopea = (short[i].lat - short[i-1].lat)/(short[i].lng - short[i-1].lng);
+                var C_a = short[i].lat - slopea * short[i].lng;
+                for (var j = 0; j < long.length; j++){
+                    if (j !== 0){
+                        var slopeb = (long[i].lat - long[j-1].lat)/ (long[i].lng - long[j-1].lng);
+                        var C_b = long[i].lat - slopeb * long[i].lng;
+                        var cand_p_x = (C_b - C_a) / (slopea - slopeb);
+                        var cand_p_y = slopeb * cand_p_x + C_b;
+                        if (
+                            Math.max(long[i].lat, long[j-1].lat) >= cand_p_y &&
+                            cand_p_y >= Math.min(long[i].lat, long[j-1].lat) &&
+                            Math.max(long[i].lng, long[j-1].lng) >= cand_p_x &&
+                            cand_p_x>= Math.min(long[i].lng, long[j-1].lng)
+
+                        )return new Point(cand_p_y, cand_p_x);
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+
+});
+
 var Collection = Chlor.collection = function(){
     this.features = [];
 };
@@ -164,31 +215,33 @@ var Polyline = Chlor.polyline = function(path, options){
     this.path = path;
 };
 
+
+
 var Polygon = Chlor.polygon = function(paths, options){
-    this.paths = paths.length > 1? paths : [paths];
+    this.paths = paths;
     this.outer = this.paths[0]
 };
 
 extend(Polygon.prototype, {
-    contains : function(point){
-        return this.outer.contains(point)
-    }
+//    contains : function(point){
+//
+//    },
+//    intersects : function(polygon){
+//
+//
+//    }
+
 });
 
 extend(Polyline.prototype, Feature.prototype);
-
-
-
 extend(Path, {
     intersect : function(other){
     },
     distance : function(){
-        this.coordinates.reduce(function(prev, current, i, arr){
+        return this.coordinates.reduce(function(prev, current, i, arr){
             return current._sphere_dis(arr[i-1]) + !i ? 0 : prev
         })
-
     }
-
 });
 
 
@@ -443,13 +496,13 @@ extend(Map.prototype, {
         var x = nw_tile_proj[0],
             y = nw_tile_proj[1];
         var p = {
-//            if the new origin of the tile is off the map, set it to zero
+//          if the new origin of the tile is off the map, set it to zero
             dx : x < 0 ? 0 : x,
             dy : y < 0 ? 0 : y,
-//            if the new origin is off the map in a dimension, then we crop it in that dimension by the amount it is off
+//          if the new origin is off the map in a dimension, then we crop it in that dimension by the amount it is off
             sx : x < 0 ? Math.abs(x) : 0,
             sy : y < 0 ? Math.abs(y) : 0,
-//            if the new origin is off the map, then the new width is tital width plus the amount off
+//          if the new origin is off the map, then the new width is tital width plus the amount off
 //          otherwise, it is either a) the total map width minus the amount off
             sWidth : x <= 0 ? tw + x : Math.min((this.width - x), tw),
             sHeight : y <= 0 ? th + y: Math.min((this.height - y), th)
@@ -505,7 +558,6 @@ extend(Tile.prototype, {
     _getImage: function(){
         var map_request = new XMLHttpRequest();
         var that = this;
-//        console.log(this)
         var url = urlTemplate(services(that.style, that.zoom), {
             bounds : that.bounds.urlString(),
             width : that.width,
@@ -575,23 +627,10 @@ extend(Point.prototype, {
         var dz = Math.sin(this.phi) - Math.sin(other.phi);
         var Ch = Math.sqrt((Math.pow(dx, 2) + Math.pow(dy, 2) + Math.pow(dz, 2)));
         return RADIUS * 2 * Math.asin(Ch/2);
-
-//    EARTH_R = 6372.8
-//
-//    y = sqrt(
-//        (cos(lat2) * sin(dlon)) ** 2
-//        + (cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dlon)) ** 2
-//        )
-//    x = sin(lat1) * sin(lat2) + cos(lat1) * cos(lat2) * cos(dlon)
-//    c = atan2(y, x)
-//    return EARTH_R * c
-
     }
 });
 
-var Box = Chlor.Box = function(sw, ne){
-//    this.attributes = {};
-
+var Box = Chlor.box = function(sw, ne){
     extend(this, {
         sw : sw,
         ne : ne,
@@ -599,7 +638,6 @@ var Box = Chlor.Box = function(sw, ne){
         center : new Point((sw.lat + ne.lat) / 2, (sw.lng + ne.lng) / 2),
         lines : [sw.lng, sw.lat, ne.lng, ne.lat]
     });
-
 };
 
 
@@ -617,8 +655,6 @@ extend(Box.prototype, {
             this.ne.lng > point.lng > this.ne.lng)
 
     }
-//}
-
 });
 exports.Chlor =  Chlor
 }(this));

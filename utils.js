@@ -57,6 +57,15 @@ var geoJson = function(obj){
                     });
                     return new Chlor.collection(polylines);
                     break;
+                case 'Polygon':
+                    var paths = coords.map(function(path){
+                        console.log(path)
+                        var arr = path.map(function(point){
+                            return new Chlor.point(point[1], point[0])
+                        });
+                        return new Chlor.path(arr)
+                    });
+                    return new Chlor.polygon(paths, {})
 //                case "Polygon":
 //                    new Polygon
 //                    break;
