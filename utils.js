@@ -65,14 +65,20 @@ var geoJson = function(obj){
                         });
                         return new Chlor.path(arr)
                     });
-                    return new Chlor.polygon(paths, {})
-//                case "Polygon":
-//                    new Polygon
-//                    break;
-//                case 'MultiPolygon':
-//                    for ... new Polygon
-//                    break;
+                    return new Chlor.polygon(paths, {});
             }
     }
 };
 
+var cross_product = function(){
+
+
+}
+
+var dot_product = function(a, b){
+    var acc = 0;
+    for (var i = 0; i < a.length; i++){
+        acc += a[i] * b[i]
+    }
+    return acc
+};

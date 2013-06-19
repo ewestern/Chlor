@@ -223,9 +223,30 @@ var Polygon = Chlor.polygon = function(paths, options){
 };
 
 extend(Polygon.prototype, {
-//    contains : function(point){
-//
-//    },
+    _is_convex : function(){
+
+    },
+
+    _convex_area : function(){
+    },
+
+    area: function(){
+        var tri_area = function(a, b, c){
+            return 0.5 * ((b.lat - a.lat) * (c.lng - a.lng) - (c.lat - a.lat) * (b.lng - a.lng))
+        };
+        var v0 = this.outer[0],
+            acc = 0
+        for (var i = 0; i < this.outer.length; i++){
+            acc += tri_area(v0, this.outer[i], this.outer[(i+1)%this.outer.length])
+        }
+        return acc
+
+    },
+
+    contains : function(point){
+
+    }
+
 //    intersects : function(polygon){
 //
 //
@@ -601,13 +622,23 @@ var services = function(name, zoom){
     else return map[name]
 };
 
-var Point = Chlor.point = function(lat, lng){
+var Point = Chlor.point = function(lat, lng, alt){
     var rat = (Math.PI/180);
+    var polar = (90 - lat) * rat;
+//    var radial = RADIUS + alt ? alt : 0;
+    var azimuthal = lng * rat;
+    var cartesian = [
+        Math.sin(polar)* Math.cos(azimuthal),
+        Math.sin(polar) * Math.sin(azimuthal),
+        Math.cos(polar)
+		];
+
     extend(this, {
         lat : lat,
         lng : lng,
         phi : lat * rat,
-        lambda : lng * rat
+        lambda : azimuthal,
+        cartesian : cartesian
     });
 };
 
@@ -619,15 +650,22 @@ extend(Point.prototype, {
                 this.lng - tol <= other.lng <= this.lng
     },
 
-    _sphere_dis : function(other){
-//       computes the distance in meters from another point
-//
-        var dx = (Math.cos(this.phi) * Math.cos(this.lambda)) - (Math.cos(other.phi) * Math.cos(other.lambda));
-        var dy = (Math.cos(this.phi) * Math.sin(this.lambda)) - (Math.cos(other.phi) * Math.sin(other.lambda));
-        var dz = Math.sin(this.phi) - Math.sin(other.phi);
-        var Ch = Math.sqrt((Math.pow(dx, 2) + Math.pow(dy, 2) + Math.pow(dz, 2)));
-        return RADIUS * 2 * Math.asin(Ch/2);
+
+    distance : function(other){
+        return RADIUS * Math.acos(
+            dot_product(self.cartesian, other.cartesian)
+        )
     }
+
+//    _sphere_dis : function(other){
+////       computes the distance in meters from another point
+////
+//        var dx = (Math.cos(this.phi) * Math.cos(this.lambda)) - (Math.cos(other.phi) * Math.cos(other.lambda));
+//        var dy = (Math.cos(this.phi) * Math.sin(this.lambda)) - (Math.cos(other.phi) * Math.sin(other.lambda));
+//        var dz = Math.sin(this.phi) - Math.sin(other.phi);
+//        var Ch = Math.sqrt((Math.pow(dx, 2) + Math.pow(dy, 2) + Math.pow(dz, 2)));
+//        return RADIUS * 2 * Math.asin(Ch/2);
+//    }
 });
 
 var Box = Chlor.box = function(sw, ne){
