@@ -1,5 +1,6 @@
 ;
 (function (exports){
+
 var extend = function(base, newobj) {
     for (var prop in newobj){
         if (newobj.hasOwnProperty(prop)) {
@@ -7,6 +8,7 @@ var extend = function(base, newobj) {
         }
     }
 };
+
 
 var Chlor = {};
 var curr_tile_id = 100;
@@ -615,7 +617,8 @@ var services = function(name, zoom){
         var large = 'http://services.nationalmap.gov/ArcGIS/rest/services/NHD_Large/MapServer/export?bbox={bounds}&bboxSR=4326&size={width},{height}&imageSR=4326&format=jpg&f=pjson';
         var small = 'http://basemap.nationalmap.gov/ArcGIS/rest/services/NHD_Small/MapServer/export?bbox={bounds}&bboxSR=4326&size={width},{height}&imageSR=4326&format=jpg&f=pjson';
         return zoom > 11 ? small : large
-      }
+      },
+      mapper: 'http://127.0.0.1:5000/tiles/?bbox={bounds}&size={width},{height}'
 
     };
     if (typeof map[name] == 'function') return map[name](zoom);
@@ -656,16 +659,6 @@ extend(Point.prototype, {
             dot_product(self.cartesian, other.cartesian)
         )
     }
-
-//    _sphere_dis : function(other){
-////       computes the distance in meters from another point
-////
-//        var dx = (Math.cos(this.phi) * Math.cos(this.lambda)) - (Math.cos(other.phi) * Math.cos(other.lambda));
-//        var dy = (Math.cos(this.phi) * Math.sin(this.lambda)) - (Math.cos(other.phi) * Math.sin(other.lambda));
-//        var dz = Math.sin(this.phi) - Math.sin(other.phi);
-//        var Ch = Math.sqrt((Math.pow(dx, 2) + Math.pow(dy, 2) + Math.pow(dz, 2)));
-//        return RADIUS * 2 * Math.asin(Ch/2);
-//    }
 });
 
 var Box = Chlor.box = function(sw, ne){
