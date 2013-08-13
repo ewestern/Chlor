@@ -1,24 +1,3 @@
-
-
-//var polyline_box = function (coordinates) {
-//    var ne = [],
-//        sw = [];
-//    coordinates.forEach(function (point, i) {
-//        if (i === 0) {
-//            ne = point;
-//            sw = point;
-//        } else {
-//            lat = point[0];
-//            lng = point[1];
-//            if (lat > ne[0]) ne = [lat, ne[1]];
-//            if (lat < sw[0]) sw = [lat, sw[1]];
-//            if (lng > ne[1]) ne = [ne[0], lng];
-//            if (lng < sw[1]) sw = [sw[0], lng];
-//        }
-//    });
-//    return [ne, sw];
-//};
-
 var geoJson = function(obj){
     switch(obj.type) {
         case 'FeatureCollection':
