@@ -1,2 +1,2 @@
-<h1>Chlor</h1>
-<h3>A maps API </h3>
+# Chlor
+A Javascript library for interactive maps.
